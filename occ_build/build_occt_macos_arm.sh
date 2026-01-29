@@ -23,7 +23,7 @@ rm -rf ${BUILD_DIR}
 rm -rf ${INSTALL_DIR}
 
 echo "==> Cloning Open CASCADE ${OCCT_VERSION}..."
-git clone --branch ${OCCT_VERSION} --depth 1 git@github.com:Open-Cascade-SAS/OCCT.git ${OCCT_SRC_DIR}
+git clone --branch ${OCCT_VERSION} --depth 1 https://github.com/Open-Cascade-SAS/OCCT.git ${OCCT_SRC_DIR}
 
 echo "==> Creating build directory..."
 mkdir -p ${BUILD_DIR}
