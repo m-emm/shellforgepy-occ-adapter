@@ -1,0 +1,232 @@
+name: Build Open CASCADE (Multi-Platform)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'occ_build/**'
+      - '.github/workflows/build-occt.yml'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Cache Open CASCADE source
+      uses: actions/cache@v4
+      with:
+        path: occ_build/occt
+        key: occt-7.9-source-${{ runner.os }}
+        restore-keys: occt-7.9-
+    
+    - name: Build Open CASCADE
+      run: |
+        cd occ_build
+        chmod +x build_occt_macos_arm.sh
+        ./build_occt_macos_arm.sh
+    
+    - name: Verify build
+      run: |
+        if [ ! -d "occ_build/install/lib" ]; then
+          echo "Error: Library directory not found"
+          exit 1
+        fi
+        
+        if [ ! -d "occ_build/install/include/opencascade" ]; then
+          echo "Error: Header directory not found"
+          exit 1
+        fi
+        
+        LIB_COUNT=$(find occ_build/install/lib -name "*.a" | wc -l | tr -d ' ')
+        HEADER_COUNT=$(find occ_build/install/include/opencascade -name "*.hxx" | wc -l | tr -d ' ')
+        
+        echo "Build verification:"
+        echo "  Libraries: $LIB_COUNT"
+        echo "  Headers: $HEADER_COUNT"
+        
+        if [ "$LIB_COUNT" -lt 10 ]; then
+          echo "Error: Too few libraries built"
+          exit 1
+        fi
+        
+        if [ "$HEADER_COUNT" -lt 100 ]; then
+          echo "Error: Too few headers found"
+          exit 1
+        fi
+        
+        echo "✅ Build verification passed!"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: occt-macos-arm64
+        path: occ_build/install/
+        retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq \
+          build-essential \
+          ninja-build
+    
+    - name: Cache Open CASCADE source
+      uses: actions/cache@v4
+      with:
+        path: occ_build/occt
+        key: occt-7.9-source-${{ runner.os }}
+        restore-keys: occt-7.9-
+    
+    - name: Build Open CASCADE
+      run: |
+        cd occ_build
+        chmod +x build_occt_linux_x86.sh
+        ./build_occt_linux_x86.sh
+    
+    - name: Verify build
+      run: |
+        if [ ! -d "occ_build/install_linux/lib" ]; then
+          echo "Error: Library directory not found"
+          exit 1
+        fi
+        
+        if [ ! -d "occ_build/install_linux/include/opencascade" ]; then
+          echo "Error: Header directory not found"
+          exit 1
+        fi
+        
+        LIB_COUNT=$(find occ_build/install_linux/lib -name "*.a" | wc -l | tr -d ' ')
+        HEADER_COUNT=$(find occ_build/install_linux/include/opencascade -name "*.hxx" | wc -l | tr -d ' ')
+        
+        echo "Build verification:"
+        echo "  Libraries: $LIB_COUNT"
+        echo "  Headers: $HEADER_COUNT"
+        
+        if [ "$LIB_COUNT" -lt 10 ]; then
+          echo "Error: Too few libraries built"
+          exit 1
+        fi
+        
+        if [ "$HEADER_COUNT" -lt 100 ]; then
+          echo "Error: Too few headers found"
+          exit 1
+        fi
+        
+        echo "✅ Build verification passed!"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: occt-linux-x64
+        path: occ_build/install_linux/
+        retention-days: 7
+
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    
+    - name: Cache Open CASCADE source
+      uses: actions/cache@v4
+      with:
+        path: occ_build/occt
+        key: occt-7.9-source-${{ runner.os }}
+        restore-keys: occt-7.9-
+    
+    - name: Build Open CASCADE
+      shell: pwsh
+      run: |
+        cd occ_build
+        ./build_occt_windows.ps1
+    
+    - name: Verify build
+      shell: pwsh
+      run: |
+        $libPath = "occ_build/install_windows/lib"
+        $headerPath = "occ_build/install_windows/include/opencascade"
+        
+        if (-not (Test-Path $libPath)) {
+          throw "Error: Library directory not found"
+        }
+        
+        if (-not (Test-Path $headerPath)) {
+          throw "Error: Header directory not found"
+        }
+        
+        $libCount = (Get-ChildItem $libPath -Filter "*.lib").Count
+        $headerCount = (Get-ChildItem $headerPath -Filter "*.hxx").Count
+        
+        Write-Host "Build verification:"
+        Write-Host "  Libraries: $libCount"
+        Write-Host "  Headers: $headerCount"
+        
+        if ($libCount -lt 10) {
+          throw "Error: Too few libraries built"
+        }
+        
+        if ($headerCount -lt 100) {
+          throw "Error: Too few headers found"
+        }
+        
+        Write-Host "✅ Build verification passed!"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: occt-windows-x64
+        path: occ_build/install_windows/
+        retention-days: 7
+
+  summary:
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Build Summary
+      run: |
+        echo "## Multi-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS ARM64 | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Linux x64 | ${{ needs.build-linux.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Windows x64 | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.build-macos.result }}" = "success" ] && \
+           [ "${{ needs.build-linux.result }}" = "success" ] && \
+           [ "${{ needs.build-windows.result }}" = "success" ]; then
+          echo "✅ All platforms built successfully!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Some platforms failed to build" >> $GITHUB_STEP_SUMMARY
+        fi

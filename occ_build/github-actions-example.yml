@@ -1,0 +1,78 @@
+# GitHub Actions workflow example for building Open CASCADE on Windows
+# Place this in .github/workflows/build-occt-windows.yml
+
+name: Build Open CASCADE (Windows)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    
+    - name: Cache Open CASCADE source
+      uses: actions/cache@v4
+      with:
+        path: occ_build/occt
+        key: occt-7.9-source
+        restore-keys: occt-7.9-
+    
+    - name: Build Open CASCADE
+      shell: pwsh
+      run: |
+        cd occ_build
+        ./build_occt_windows.ps1
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: occt-windows-x64
+        path: occ_build/install_windows/
+        retention-days: 7
+    
+    - name: Verify build
+      shell: pwsh
+      run: |
+        $libPath = "occ_build/install_windows/lib"
+        $headerPath = "occ_build/install_windows/include/opencascade"
+        
+        if (-not (Test-Path $libPath)) {
+          throw "Library directory not found"
+        }
+        
+        if (-not (Test-Path $headerPath)) {
+          throw "Header directory not found"
+        }
+        
+        $libCount = (Get-ChildItem $libPath -Filter "*.lib").Count
+        $headerCount = (Get-ChildItem $headerPath -Filter "*.hxx").Count
+        
+        Write-Host "Build verification:"
+        Write-Host "  Libraries: $libCount"
+        Write-Host "  Headers: $headerCount"
+        
+        if ($libCount -lt 10) {
+          throw "Too few libraries built"
+        }
+        
+        if ($headerCount -lt 100) {
+          throw "Too few headers found"
+        }
+        
+        Write-Host "Build verification passed!"
